@@ -135,7 +135,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 <script>
 (function(){
   var KEY="catatan_belanja_v1", TKEY="catatan_belanja_del_v1", CKEY="catatan_belanja_cfg_v1";
-  var data={}, tomb=[], editId=null, cur=1, syncing=false, again=false, lastSync=null, syncErr="";
+  var data={}, tomb=[], editId=null, cur=1, syncing=false, again=false, lastSync=null, syncErr="", blocked=false;
   var cfg={url:"https://script.google.com/macros/s/AKfycbynG9JsQRlUakT1ZV3tl0OrFncbLAr6bYOBPg3SAolo7_hZB2L2R5gUnlQDGHKOaQ/exec",key:"",auto:true};
   try{data=JSON.parse(localStorage.getItem(KEY)||"{}")}catch(e){data={}}
   try{tomb=JSON.parse(localStorage.getItem(TKEY)||"[]")}catch(e){tomb=[]}
@@ -192,27 +192,39 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     Object.keys(nd).forEach(function(d){if(!nd[d].length)delete nd[d]});
     data=nd;save();
   }
-  async function sync(){
+  function needRows(res){
+    if(!res||!Array.isArray(res.rows)){
+      var e=new Error("kode Apps Script belum versi terbaru (tempel kode baru, lalu Deploy versi baru)");e.old=true;throw e;
+    }
+    return res.rows;
+  }
+  async function sync(manual){
     if(!cfg.key||!cfg.url){setSt();return}
+    if(blocked&&!manual)return;
     if(syncing){again=true;return}
-    syncing=true;setSt();
+    syncing=true;blocked=false;setSt();
     try{
+      /* 1. ambil data server dulu, sebelum mengirim apa pun */
+      mergeServer(needRows(await post({aksi:"list"})));
+      var pushed=false;
+      /* 2. kirim hapusan */
       var ids=tomb.slice();
       for(var i=0;i<ids.length;i++){
         await post({aksi:"hapus",id:ids[i]});
-        tomb=tomb.filter(function(x){return x!==ids[i]});saveTomb();
+        tomb=tomb.filter(function(x){return x!==ids[i]});saveTomb();pushed=true;
       }
+      /* 3. kirim catatan baru / yang diedit */
       var dl=dirtyList();
       for(var j=0;j<dl.length;j++){
         var it=dl[j],s0=it.r.s,p0=it.r.p;
         await post({aksi:"simpan",id:it.r.id,tanggal:it.d,supplier:s0,harga:p0});
         if(it.r.s===s0&&it.r.p===p0)it.r.sync=true;
-        save();
+        save();pushed=true;
       }
-      var res=await post({aksi:"list"});
-      mergeServer(res.rows||[]);
+      /* 4. ambil lagi supaya sama dengan server */
+      if(pushed)mergeServer(needRows(await post({aksi:"list"})));
       lastSync=new Date();syncErr="";
-    }catch(e){syncErr=e.message||"gagal"}
+    }catch(e){syncErr=e.message||"gagal";if(e.old)blocked=true}
     syncing=false;
     if(editId&&!(data[$("tgl").value]||[]).some(function(r){return r.id===editId}))resetForm();
     renderAll();
@@ -236,7 +248,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 
   $("syncBtn").addEventListener("click",function(){
     if(!cfg.key){toast("Isi kata rahasia di Pengaturan dulu");show(3);return}
-    sync();
+    sync(true);
   });
   $("cfgShow").addEventListener("change",function(){$("cfgKey").type=this.checked?"text":"password"});
   $("cfgTest").addEventListener("click",function(){
@@ -253,7 +265,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     cfg.url=$("cfgUrl").value.trim();cfg.key=$("cfgKey").value.trim();cfg.auto=$("cfgAuto").checked;
     try{localStorage.setItem(CKEY,JSON.stringify(cfg))}catch(e){}
     toast("Pengaturan tersimpan");syncErr="";
-    if(cfg.key)sync();else setSt();
+    if(cfg.key)sync(true);else setSt();
   });
 
   /* ---------- saran supplier ---------- */
