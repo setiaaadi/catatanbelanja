@@ -57,6 +57,12 @@ input:focus-visible,button:focus-visible{outline:2px solid var(--rose);outline-o
 .bar{height:6px;border-radius:3px;background:var(--rosebg);margin-top:6px;overflow:hidden}
 .bar i{display:block;height:100%;background:var(--rose);border-radius:3px}
 .sup small{color:var(--mute);font-size:12px}
+.chips button.on{background:var(--green);color:var(--bg);border-color:var(--green)}
+.row2{display:flex;gap:8px;margin-top:10px}
+.row2 button{flex:1;padding:10px;border:1px solid var(--line);background:var(--card);color:var(--green);border-radius:10px;font-size:14px;font-weight:600}
+.row2 button.del{color:var(--rose)}
+.keyok{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 14px;font-size:15px;color:var(--green)}
+.keyok button{border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:8px;padding:6px 12px;font-size:13px}
 .empty{color:var(--mute);text-align:center;padding:24px 10px;font-size:15px}
 .hint{font-size:12px;color:var(--mute);margin-top:8px;line-height:1.5}
 .toast{width:max-content;max-width:90vw;text-align:center;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--green);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:9}
@@ -108,17 +114,37 @@ input:focus-visible,button:focus-visible{outline:2px solid var(--rose);outline-o
 </main>
 
 <main id="v3" hidden>
-  <h2>Sinkron dengan Google Sheet</h2>
-  <label class="f" for="cfgUrl">URL Apps Script</label>
-  <input id="cfgUrl" autocomplete="off">
-  <label class="f" for="cfgKey">Kata rahasia (sama dengan yang di skrip)</label>
-  <input id="cfgKey" type="password" autocomplete="off" placeholder="Isi kata rahasiamu">
-  <label class="chk"><input type="checkbox" id="cfgShow">Tampilkan kata rahasia</label>
+  <h2>Tujuan Google Sheet</h2>
+  <div class="chips" id="profChips"></div>
+  <div class="hint" id="profInfo"></div>
+  <div class="row2" id="profAct">
+    <button id="profAdd">+ Tambah</button>
+    <button id="profEdit">Ubah</button>
+    <button id="profDel" class="del">Hapus</button>
+  </div>
+  <div id="profForm" hidden>
+    <label class="f" for="pfNama">Nama tujuan</label>
+    <input id="pfNama" placeholder="Contoh: Lavensia" autocomplete="off">
+    <label class="f" for="pfUrl">URL Apps Script</label>
+    <input id="pfUrl" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off">
+    <button class="btn" id="pfSave">Simpan tujuan</button>
+    <button class="btn ghost" id="pfCancel">Batal</button>
+  </div>
+
+  <h2>Kata rahasia</h2>
+  <div class="card keyok" id="keySet"><span>✓ Kata rahasia sudah tersimpan</span><button id="keyChange">Ganti</button></div>
+  <div id="keyEdit">
+    <input id="cfgKey" type="password" autocomplete="new-password" placeholder="Isi kata rahasia">
+    <label class="chk"><input type="checkbox" id="cfgShow">Tampilkan kata rahasia</label>
+    <button class="btn" id="keySave">Simpan kata rahasia</button>
+    <button class="btn ghost" id="keyCancel">Batal</button>
+  </div>
+
+  <h2>Sinkron</h2>
   <label class="chk"><input type="checkbox" id="cfgAuto">Sinkron otomatis</label>
-  <button class="btn" id="cfgSave">Simpan pengaturan</button>
   <button class="btn ghost" id="cfgTest">Tes koneksi</button>
   <div class="hint" id="cfgStatus"></div>
-  <div class="hint">Semua HP yang memakai URL Apps Script dan kata rahasia yang sama akan melihat data yang sama. Tambah, edit, dan hapus di satu HP ikut berubah di HP lain setelah sinkron (otomatis saat aplikasi dibuka, atau tekan Segarkan). Kalau sedang tanpa internet, catatan tetap tersimpan di HP dan terkirim saat online lagi. Kata rahasia perlu diisi sekali di setiap HP.</div>
+  <div class="hint">Semua HP yang memakai tujuan dan kata rahasia yang sama akan melihat data yang sama. Tambah, edit, dan hapus di satu HP ikut berubah di HP lain setelah sinkron. Kalau sedang tanpa internet, catatan tetap tersimpan di HP dan terkirim saat online lagi. Kata rahasia disimpan di HP ini saja dan tidak ditampilkan lagi setelah disimpan. Perlu diisi sekali di setiap HP.</div>
 </main>
 <div class="toast" id="toast"></div>
 
@@ -134,16 +160,40 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 </script>
 <script>
 (function(){
-  var KEY="catatan_belanja_v1", TKEY="catatan_belanja_del_v1", CKEY="catatan_belanja_cfg_v1";
+  var DEF_URL="https://script.google.com/macros/s/AKfycbynG9JsQRlUakT1ZV3tl0OrFncbLAr6bYOBPg3SAolo7_hZB2L2R5gUnlQDGHKOaQ/exec";
+  var SKEY="catatan_belanja_cfg_v2";
   var data={}, tomb=[], editId=null, cur=1, syncing=false, again=false, lastSync=null, syncErr="", blocked=false;
-  var cfg={url:"https://script.google.com/macros/s/AKfycbynG9JsQRlUakT1ZV3tl0OrFncbLAr6bYOBPg3SAolo7_hZB2L2R5gUnlQDGHKOaQ/exec",key:"",auto:true};
-  try{data=JSON.parse(localStorage.getItem(KEY)||"{}")}catch(e){data={}}
-  try{tomb=JSON.parse(localStorage.getItem(TKEY)||"[]")}catch(e){tomb=[]}
-  try{var c0=JSON.parse(localStorage.getItem(CKEY)||"null");if(c0)for(var k0 in c0)cfg[k0]=c0[k0]}catch(e){}
+  var keyEditing=false, profMode=null;
+  var store=null;
+  try{store=JSON.parse(localStorage.getItem(SKEY)||"null")}catch(e){store=null}
+  if(!store||!store.profiles||!store.profiles.length){
+    var old={};try{old=JSON.parse(localStorage.getItem("catatan_belanja_cfg_v1")||"{}")||{}}catch(e){}
+    store={profiles:[{id:"utama",nama:"Utama",url:old.url||DEF_URL,key:old.key||""}],active:"utama",auto:old.auto===undefined?true:!!old.auto};
+  }
+  var cfg={url:"",key:"",auto:true};
+  function dkey(id){return id==="utama"?"catatan_belanja_v1":"catatan_belanja_v1_"+id}
+  function tkey(id){return id==="utama"?"catatan_belanja_del_v1":"catatan_belanja_del_v1_"+id}
+  function activeP(){
+    for(var i=0;i<store.profiles.length;i++)if(store.profiles[i].id===store.active)return store.profiles[i];
+    store.active=store.profiles[0].id;return store.profiles[0];
+  }
+  function saveStore(){try{localStorage.setItem(SKEY,JSON.stringify(store))}catch(e){}}
+  function applyActive(){var p=activeP();cfg.url=p.url;cfg.key=p.key;cfg.auto=!!store.auto}
   var $=function(i){return document.getElementById(i)};
   function uid(){try{if(window.crypto&&crypto.randomUUID)return crypto.randomUUID()}catch(e){}return Date.now().toString(36)+Math.random().toString(36).slice(2,12)}
-  function save(){try{localStorage.setItem(KEY,JSON.stringify(data))}catch(e){toast("Gagal menyimpan, memori penuh?")}}
-  function saveTomb(){try{localStorage.setItem(TKEY,JSON.stringify(tomb))}catch(e){}}
+  function save(){try{localStorage.setItem(dkey(activeP().id),JSON.stringify(data))}catch(e){toast("Gagal menyimpan, memori penuh?")}}
+  function saveTomb(){try{localStorage.setItem(tkey(activeP().id),JSON.stringify(tomb))}catch(e){}}
+  function loadActive(){
+    var id=activeP().id;applyActive();
+    try{data=JSON.parse(localStorage.getItem(dkey(id))||"{}")||{}}catch(e){data={}}
+    try{tomb=JSON.parse(localStorage.getItem(tkey(id))||"[]")||[]}catch(e){tomb=[]}
+    Object.keys(data).forEach(function(d){data[d].forEach(function(r){
+      if(!r.id)r.id=uid();
+      if(r.sync===undefined)r.sync=!!r.sent;
+      delete r.sent;
+    })});
+    save();
+  }
   function rp(n){return "Rp "+Number(n||0).toLocaleString("id-ID")}
   function today(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
   function toast(t){var e=$("toast");e.textContent=t;e.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(function(){e.classList.remove("on")},2200)}
@@ -152,13 +202,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   function valid(r){return r&&(r.s||r.p)}
   function entries(d){return (data[d]||[]).filter(valid)}
 
-  /* migrasi data versi lama */
-  Object.keys(data).forEach(function(d){data[d].forEach(function(r){
-    if(!r.id)r.id=uid();
-    if(r.sync===undefined)r.sync=!!r.sent;
-    delete r.sent;
-  })});
-  save();
+  saveStore();try{localStorage.removeItem("catatan_belanja_cfg_v1")}catch(e){}
+  loadActive();
 
   $("tgl").value=today();
   $("bln").value=today().slice(0,7);
@@ -250,9 +295,82 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     if(!cfg.key){toast("Isi kata rahasia di Pengaturan dulu");show(3);return}
     sync(true);
   });
+  function shortUrl(u){var m=u.match(/\/s\/([^/]+)/);return m&&m[1].length>14?"…"+m[1].slice(0,6)+"…"+m[1].slice(-6)+"/exec":u}
+  function renderSettings(){
+    var box=$("profChips");box.innerHTML="";
+    store.profiles.forEach(function(p){
+      var b=document.createElement("button");b.textContent=p.nama;if(p.id===store.active)b.className="on";
+      b.addEventListener("click",function(){switchProfile(p.id)});
+      box.appendChild(b);
+    });
+    var p=activeP(),has=!!p.key;
+    $("profInfo").textContent=shortUrl(p.url);
+    $("profForm").hidden=profMode===null;
+    $("profAct").hidden=profMode!==null;
+    $("keySet").hidden=!has||keyEditing;
+    $("keyEdit").hidden=has&&!keyEditing;
+    $("keyCancel").hidden=!has;
+    $("cfgKey").value="";$("cfgKey").type="password";$("cfgShow").checked=false;
+    $("cfgAuto").checked=!!store.auto;
+  }
+  function switchProfile(id){
+    if(id===store.active)return;
+    if(syncing){toast("Tunggu sinkron selesai dulu");return}
+    save();saveTomb();
+    store.active=id;saveStore();
+    lastSync=null;syncErr="";blocked=false;keyEditing=false;profMode=null;
+    loadActive();resetForm();renderAll();renderSettings();
+    if(cfg.key&&cfg.auto)sync();
+  }
+  $("profAdd").addEventListener("click",function(){profMode="add";$("pfNama").value="";$("pfUrl").value="";renderSettings();$("pfNama").focus()});
+  $("profEdit").addEventListener("click",function(){
+    if(syncing){toast("Tunggu sinkron selesai dulu");return}
+    var p=activeP();profMode="edit";$("pfNama").value=p.nama;$("pfUrl").value=p.url;renderSettings();
+  });
+  $("pfCancel").addEventListener("click",function(){profMode=null;renderSettings()});
+  $("pfSave").addEventListener("click",function(){
+    var nama=$("pfNama").value.trim(),url=$("pfUrl").value.trim();
+    if(!nama){toast("Isi nama tujuan");return}
+    if(url.indexOf("https://script.google.com/")!==0||url.indexOf("/macros/s/")<0){toast("URL harus berupa alamat Apps Script (https://script.google.com/macros/s/.../exec)");return}
+    if(profMode==="edit"){
+      var p=activeP();p.nama=nama;p.url=url;saveStore();applyActive();profMode=null;syncErr="";blocked=false;
+      renderSettings();setSt();toast("Tujuan diperbarui");if(cfg.key&&cfg.auto)sync(true);
+    }else{
+      if(syncing){toast("Tunggu sinkron selesai dulu");return}
+      save();saveTomb();
+      var np={id:uid().replace(/[^a-z0-9]/gi,"").slice(0,12),nama:nama,url:url,key:""};
+      store.profiles.push(np);store.active=np.id;saveStore();
+      lastSync=null;syncErr="";blocked=false;keyEditing=false;profMode=null;
+      loadActive();resetForm();renderAll();renderSettings();toast("Tujuan ditambah. Sekarang isi kata rahasianya");
+    }
+  });
+  $("profDel").addEventListener("click",function(){
+    if(store.profiles.length<2){toast("Minimal harus ada satu tujuan");return}
+    if(syncing){toast("Tunggu sinkron selesai dulu");return}
+    var p=activeP();
+    if(!confirm("Hapus tujuan \""+p.nama+"\" dari aplikasi ini? Data di Google Sheet tetap aman, hanya salinannya di HP ini yang dihapus."))return;
+    try{localStorage.removeItem(dkey(p.id));localStorage.removeItem(tkey(p.id))}catch(e){}
+    store.profiles=store.profiles.filter(function(x){return x.id!==p.id});
+    store.active=store.profiles[0].id;saveStore();
+    lastSync=null;syncErr="";blocked=false;keyEditing=false;profMode=null;
+    loadActive();resetForm();renderAll();renderSettings();toast("Tujuan dihapus");
+    if(cfg.key&&cfg.auto)sync();
+  });
+
   $("cfgShow").addEventListener("change",function(){$("cfgKey").type=this.checked?"text":"password"});
+  $("keyChange").addEventListener("click",function(){keyEditing=true;renderSettings();$("cfgKey").focus()});
+  $("keyCancel").addEventListener("click",function(){keyEditing=false;renderSettings()});
+  $("keySave").addEventListener("click",function(){
+    var v=$("cfgKey").value.trim();
+    if(!v){toast("Isi kata rahasia dulu");return}
+    activeP().key=v;saveStore();applyActive();
+    keyEditing=false;syncErr="";blocked=false;
+    $("cfgKey").value="";renderSettings();toast("Kata rahasia tersimpan");
+    sync(true);
+  });
+  $("cfgAuto").addEventListener("change",function(){store.auto=this.checked;saveStore();applyActive();toast(this.checked?"Sinkron otomatis aktif":"Sinkron otomatis mati")});
   $("cfgTest").addEventListener("click",function(){
-    var st=$("cfgStatus"),b=this;cfg.url=$("cfgUrl").value.trim();
+    var st=$("cfgStatus"),b=this;
     st.textContent="Menguji koneksi...";b.disabled=true;
     post({aksi:"list"},"__tes__").then(function(){st.textContent="Skrip merespons.";b.disabled=false},function(e){
       b.disabled=false;
@@ -260,12 +378,6 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         ?"Koneksi berhasil: skrip Google merespons. Kata rahasia diperiksa saat sinkron."
         :"Gagal: "+e.message;
     });
-  });
-  $("cfgSave").addEventListener("click",function(){
-    cfg.url=$("cfgUrl").value.trim();cfg.key=$("cfgKey").value.trim();cfg.auto=$("cfgAuto").checked;
-    try{localStorage.setItem(CKEY,JSON.stringify(cfg))}catch(e){}
-    toast("Pengaturan tersimpan");syncErr="";
-    if(cfg.key)sync(true);else setSt();
   });
 
   /* ---------- saran supplier ---------- */
@@ -421,7 +533,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     $("v1").hidden=n!==1;$("v2").hidden=n!==2;$("v3").hidden=n!==3;
     $("t1").setAttribute("aria-selected",n===1);$("t2").setAttribute("aria-selected",n===2);$("t3").setAttribute("aria-selected",n===3);
     if(n===1){renderToday();renderChips()}else if(n===2)renderMonth();
-    else{$("cfgUrl").value=cfg.url;$("cfgKey").value=cfg.key;$("cfgKey").type="password";$("cfgShow").checked=false;$("cfgStatus").textContent="";$("cfgAuto").checked=!!cfg.auto}
+    else{profMode=null;keyEditing=false;$("cfgStatus").textContent="";renderSettings()}
   }
   $("t1").addEventListener("click",function(){show(1)});
   $("t2").addEventListener("click",function(){show(2)});
